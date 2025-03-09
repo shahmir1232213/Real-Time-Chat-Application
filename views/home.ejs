@@ -1,0 +1,245 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Chat Application</title>
+    <link rel="stylesheet" href="/stylesheets/chatAppHome.css">
+    
+    <script src="https://cdn.socket.io/4.8.1/socket.io.min.js" integrity="sha384-mkQ3/7FUtcGyoppY6bz/PORYoGqOl7/aSUMn2ymDOJcapfS6PHqxhRTMh1RR0Q6+" crossorigin="anonymous"></script>  
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+    
+</head>
+<body>
+    <div class="container">
+        <!-- Sidebar -->
+        <div class="sidebar">
+            <div class="sidebar-header">
+                <img src="/images/<%= user_loggedin.image %>" alt="User Avatar" class="user-avatar">
+                <h3>My Chats</h3>
+            </div>
+           
+            <!-- Chat List -->
+            <div class="chat-list">
+                
+                <% if (users) { %>
+                    <% users.forEach((user) => { %>
+                        <% if (user._id!=user_loggedin._id) { %>
+                            <div class="chat-item" data-id="<%= user._id %>">
+                                <img src="/images/<%= user.image %>" alt="<%= user.name %>'s Avatar" class="chat-avatar">
+                                <div class="chat-info">
+                                    <h5><%= user.name %></h5>
+                                    <% 
+                                        if (user.is_online == '1') {
+                                            %>
+                                            <span class="online-status" id="<%=user._id%>-status">Online</span>
+                                            <%
+                                        }
+                                        else{
+                                            %>
+                                            <span class="offline-status" id="<%=user._id%>-status">Offline</span>
+                                            <%
+                                        }
+                                    %>
+                                </div>
+                                
+                            </div>
+                        <% } %>
+                        
+                    <% }) %>
+                <% } else { %>
+                    <p class="no-chats">No chats available</p>
+                <% } %>
+            </div>
+            
+            <!-- Logout Button -->
+            <form action="/logout" method="POST">
+                <button type="submit" class="logout-btn">Logout</button>
+            </form>
+            
+        </div>
+
+        <!-- Main Chat Container -->
+        <div class="main-chat-container">
+            <% if (users) { %>
+                <% users.forEach((user) => { %>
+                    <div class="main-chat" id="<%= user._id %>">
+                        <div class="main-chat-header">
+                            <img src="/images/<%= user.image %>" alt="<%= user.name %>'s Avatar" class="main-chat-avatar">
+                            <h4><%= user.name %></h4>
+                        </div>
+
+                        <div class="chat-area">
+                            
+                        </div>
+                        <form class="chat-input" method="POST" action="/home/chatSave">
+                            <input type="text" placeholder="Type a message..." class="message-input">
+                            <button type= "submit" class="send-button">Send</button>
+                        </form>
+                    </div>
+                <% }) %>
+            <% } %>
+        </div>
+    </div>
+
+    <script>
+        const session_id = "<%= user_loggedin._id %>";
+         const socket = io("/userNameSpace", {
+            auth: {
+                userStatus: session_id
+            }
+        });
+
+    document.addEventListener('DOMContentLoaded', () => {
+    const chatItems = document.querySelectorAll('.chat-item');
+    const mainChats = document.querySelectorAll('.main-chat');
+    let reciever_Id = null;
+    let sender_Id = null;
+
+    chatItems.forEach(item => {
+    item.addEventListener('click', () => {
+        // Hide all main chat sections
+        mainChats.forEach(chat => chat.classList.remove('active'));
+        
+        // Get the user ID of the clicked chat item
+        const userId = item.getAttribute('data-id');
+        reciever_Id = userId; // Set receiver ID
+        sender_Id = "<%= user_loggedin._id %>"; // Set sender ID
+        console.log("Sender ID: ", sender_Id);
+        console.log("Receiver ID: ", reciever_Id);
+        // removing circle of unread message
+        let chatItem =  document.querySelector(`.chat-item[data-id='${reciever_Id}']`);
+       let circle = chatItem.querySelector(".circle")
+       if(circle){
+        chatItem.removeChild(circle)
+       }
+       
+        
+       // Show the corresponding main chat
+        const activeChat = document.getElementById(userId);
+        if (activeChat) {
+            activeChat.classList.add('active');
+        }
+
+        // Emit event to check for existing chats
+        socket.emit("existChat", {
+            senderId: sender_Id,
+            recieverId: reciever_Id
+        });
+
+        // Listen for chats to load
+        socket.on("loadChats", (data) => {
+            // Clear previous chat messages
+            const chatArea = document.querySelector('.main-chat.active .chat-area');
+            if (chatArea) {
+                chatArea.innerHTML = ''; // Reset chat area
+            }
+
+            const chats = data.chats;
+            chats.forEach(chat => {
+                const chatMessage = document.createElement("div");
+                let messageClass;
+                if (chat.senderId === sender_Id) {
+                    messageClass = "chat-message sent";
+                } else {
+                    messageClass = "chat-message received";
+                }
+                chatMessage.className = messageClass;
+                chatMessage.textContent = chat.message;
+
+                // Append message to the active chat area
+                if (chatArea) {
+                    chatArea.appendChild(chatMessage);
+                }
+            });
+        });
+    });
+});
+
+
+    const sendForms = document.querySelectorAll(".chat-input");
+    sendForms.forEach((form) => {
+        form.addEventListener("submit", (event) => {
+            event.preventDefault(); // Prevent the default form submission behavior
+
+            // Get the message input
+            const messageInput = form.querySelector(".message-input");
+            const message = messageInput.value;
+            console.log("message: ", message);
+
+            if (!message.trim()) return;  // Prevent sending empty messages
+            chatSent = document.createElement("div");
+            chatSent.className = "chat-message sent";
+            chatSent.textContent = message;
+            // Find the chat area of the active chat
+            const activeChat = document.querySelector('.main-chat.active .chat-area');
+            if (activeChat){
+                activeChat.appendChild(chatSent);
+            } // Ensure there is an active chat area
+            
+            data = {
+                reciever : reciever_Id,
+                sender:sender_Id,
+                message:message
+            }
+            // console.log("frontend: ",reciever_Id)
+            fetch("/home/chatSave",{
+                method:"POST",
+                headers:{
+                    'Content-Type':'application/json',
+                },
+                body:JSON.stringify(data)
+            })
+        });
+    });
+});
+
+    socket.on("getOnlineUser",(data)=>{
+        const statusElement = document.getElementById(data.userId+'-status');
+        statusElement.textContent = "Online";
+        statusElement.classList.remove("offline-status");
+        statusElement.classList.add("online-status");
+
+    })
+    socket.on("getOfflineUser",(data)=>{
+        const statusElement = document.getElementById(`${data.userId}-status`);
+        statusElement.textContent = "Offline";
+        statusElement.classList.remove("online-status");
+        statusElement.classList.add("offline-status");
+    })
+    socket.on("message",(data)=>{
+        //console.log("data from shahmir:",data)
+       // console.log("Sender: ",data.sender)
+       let chatItem =  document.querySelector(`.chat-item[data-id='${data.sender}']`);
+       let circle = chatItem.querySelector(".circle")
+       if(circle){
+            circle.innerText = parseInt(circle.innerText) + 1;
+       }
+       else{
+        //let mainChat = document.querySelector(`.main-chat#${data.sender}`);
+          //  if(!mainChat){
+                let circle = document.createElement("div")
+                circle.className ="circle";
+                circle.innerText = 1;
+                chatItem.appendChild(circle);
+                console.log("chatItem: ",chatItem)
+           // }
+       }
+       
+        senderId = data.sender;
+        chatID = CSS.escape(senderId);
+        chatRecieved = document.createElement("div");
+        chatRecieved.className = "chat-message received";
+        chatRecieved.textContent = data.message;
+        // Find the chat area of the active chat
+        const activeChat = document.querySelector(`.main-chat#${chatID} .chat-area`);
+        if (activeChat){
+            activeChat.appendChild(chatRecieved);
+        }
+
+    })
+
+    
+    </script>
+</body>
+</html>
